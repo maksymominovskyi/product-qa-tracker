@@ -56,32 +56,18 @@ if st.button("➕ Add data"):
         st.success(f"Added {len(df_new)} rows")
 
 # ---- ROLE FROM URL ----
-st.subheader("👤 Role")
-
-role = st.selectbox("Select your role", ["Me", "Katya", "Sabine"])
 ROLE_PARAM_TO_LABEL = {
     "me": "Me",
     "katya": "Katya",
     "sabine": "Sabine",
 }
-
 query_role = st.query_params.get("role", "me")
 query_role = str(query_role).lower()
 
 if query_role not in ROLE_PARAM_TO_LABEL:
-    st.warning("Unknown role in URL. Fallback role is Me.")
     query_role = "me"
 
 role = ROLE_PARAM_TO_LABEL[query_role]
-st.caption(f"Current role from URL: **{role}**")
-st.caption("Quick links:")
-st.markdown(
-    "\n".join([
-        "- [Me](?role=me)",
-        "- [Katya](?role=katya)",
-        "- [Sabine](?role=sabine)",
-    ])
-)
 
 df = st.session_state.data.copy()
 
@@ -107,3 +93,4 @@ st.subheader("💾 Export")
 output = io.BytesIO()
 with pd.ExcelWriter(output, engine='openpyxl') as writer:
     st.session_state.data.to_excel(writer, index=False)
+
