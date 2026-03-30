@@ -157,6 +157,13 @@ for col_name, selected_values in selected_filters.items():
 st.write(f"Showing {len(filtered_df)} records")
 
 # ---- EDIT TABLE ----
+for text_col in ["fix_comment", "qa_comment"]:
+    if text_col in filtered_df.columns:
+        filtered_df[text_col] = filtered_df[text_col].fillna("").astype(str)
+
+if "status" in filtered_df.columns:
+    filtered_df["status"] = filtered_df["status"].fillna("").astype(str)
+
 if role == "Me":
     disabled_columns = []
     status_select_options = STATUS_OPTIONS
