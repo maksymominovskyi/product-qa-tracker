@@ -65,7 +65,10 @@ query_role = st.query_params.get("role", "me")
 query_role = str(query_role).lower()
 
 if query_role not in ROLE_PARAM_TO_LABEL:
-    query_role = "me"
+    st.error(
+        "Unknown role in URL. Allowed values: role=me, role=katya, role=sabine."
+    )
+    st.stop()
 
 role = ROLE_PARAM_TO_LABEL[query_role]
 
@@ -73,7 +76,6 @@ df = st.session_state.data.copy()
 
 # ---- FILTERING ----
 if role == "Me":
-    df_view = df[df["status"].isin(["New", "Fixed"])]
 elif role == "Katya":
     df_view = df[df["status"].isin(["Need fix", "Ready to fill all languages"])]
 else:
@@ -93,4 +95,9 @@ st.subheader("💾 Export")
 output = io.BytesIO()
 with pd.ExcelWriter(output, engine='openpyxl') as writer:
     st.session_state.data.to_excel(writer, index=False)
+output.seek(0)
 
+st.download_button(
+    "Download Excel",
+    data=output,
+    file_name="product_tracker.xlsx",
