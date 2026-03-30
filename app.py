@@ -31,8 +31,8 @@ def save_persistent_data(df: pd.DataFrame) -> None:
     export_df = df[["primary_id", "name_de", "fix_comment", "qa_comment", "status"]].copy()
     export_df.to_excel(DATA_FILE, index=False)
 
-st.set_page_config(page_title="Product QA Tracker", layout="wide")
 
+st.set_page_config(page_title="Product QA Tracker", layout="wide")
 st.title("🛠️ Product QA Tracker")
 
 # ---- INIT SESSION STATE ----
@@ -130,23 +130,21 @@ else:
     ]
     df_view = df_view.drop(columns=["fix_comment"], errors="ignore")
 
-# ---- COLUMN FILTERS (dropdown near each column name) ----
+# ---- COLUMN FILTERS ----
 st.subheader("🔎 Filters")
 filtered_df = df_view.copy()
 
 filter_column_names = list(filtered_df.columns)
-filter_columns = st.columns(len(filter_column_names))
 selected_filters = {}
 
-for idx, col_name in enumerate(filter_column_names):
-    available_values = sorted(df_view[col_name].dropna().astype(str).unique().tolist())
-    with filter_columns[idx]:
-        with st.popover(f"{col_name} ⏷"):
-            selected_filters[col_name] = st.multiselect(
-                "Select values",
-                options=available_values,
-                key=f"filter_values_{role}_{col_name}"
-            )
+with st.expander("Open filters", expanded=False):
+    for col_name in filter_column_names:
+        available_values = sorted(df_view[col_name].dropna().astype(str).unique().tolist())
+        selected_filters[col_name] = st.multiselect(
+            f"{col_name}",
+            options=available_values,
+            key=f"filter_values_{role}_{col_name}"
+        )
 
 for col_name, selected_values in selected_filters.items():
     if selected_values:
@@ -166,13 +164,20 @@ if "status" in filtered_df.columns:
 
 if role == "Me":
     disabled_columns = []
-    status_select_options = STATUS_OPTIONS
+    allowed_status_options = STATUS_OPTIONS
 elif role == "Katya":
     disabled_columns = ["fix_comment", "qa_comment"]
-    status_select_options = ["New", "Fixed", "Filled all languages"]
+    allowed_status_options = ["New", "Fixed", "Filled all languages"]
 else:
     disabled_columns = ["primary_id", "name_de"]
-    status_select_options = ["Sabine, check DE", "Ready to fill all languages"]
+    allowed_status_options = ["Sabine, check DE", "Ready to fill all languages"]
+
+current_visible_statuses = []
+if "status" in filtered_df.columns:
+    current_visible_statuses = filtered_df["status"].dropna().astype(str).unique().tolist()
+
+status_option_set = set(allowed_status_options).union(set(current_visible_statuses))
+status_select_options = [status for status in STATUS_OPTIONS if status in status_option_set]
 
 allow_row_delete = role in ["Me", "Katya"]
 
