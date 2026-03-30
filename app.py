@@ -18,8 +18,18 @@ st.title("🛠️ Product QA Tracker")
 # ---- INIT SESSION STATE ----
 if "data" not in st.session_state:
     st.session_state.data = pd.DataFrame(columns=[
-        "primary_id", "name_de", "fix_comment", "qa_comment", "status"
+        "_row_id", "primary_id", "name_de", "fix_comment", "qa_comment", "status"
     ])
+if "next_row_id" not in st.session_state:
+    st.session_state.next_row_id = 1
+
+if "_row_id" not in st.session_state.data.columns:
+    st.session_state.data["_row_id"] = range(
+        st.session_state.next_row_id,
+        st.session_state.next_row_id + len(st.session_state.data)
+    )
+    st.session_state.next_row_id += len(st.session_state.data)
+
 # ---- ROLE FROM URL ----
 ROLE_PARAM_TO_LABEL = {
     "me": "Me",
@@ -58,20 +68,24 @@ if role in ["Me", "Katya"]:
 
                 if len(parts) == 1:
                     new_data.append({
+                        "_row_id": st.session_state.next_row_id,
                         "primary_id": parts[0],
                         "name_de": "",
                         "fix_comment": "",
                         "qa_comment": "",
                         "status": "New"
                     })
+                    st.session_state.next_row_id += 1
                 else:
                     new_data.append({
+                        "_row_id": st.session_state.next_row_id,
                         "primary_id": parts[0],
                         "name_de": parts[1],
                         "fix_comment": "",
                         "qa_comment": "",
                         "status": "New"
                     })
+                    st.session_state.next_row_id += 1
 
             df_new = pd.DataFrame(new_data)
 
@@ -89,7 +103,7 @@ df["status"] = df["status"].fillna("").replace("", "New")
 if role == "Me":
     df_view = df
 elif role == "Katya":
-      df_view = df[
+    df_view = df[
         df["status"].isin([
             "New",
             "Need fix",
@@ -100,7 +114,7 @@ elif role == "Katya":
         ])
     ]
 else:
-     df_view = df[
+    df_view = df[
         df["status"].isin([
             "Sabine, check DE",
             "Ready to fill all languages",
@@ -112,8 +126,9 @@ else:
 st.subheader("🔎 Filters")
 filtered_df = df_view.copy()
 
-filter_columns = st.columns(len(filtered_df.columns))
-for idx, col_name in enumerate(filtered_df.columns):
+filter_column_names = [c for c in filtered_df.columns if c != "_row_id"]
+filter_columns = st.columns(len(filter_column_names))
+for idx, col_name in enumerate(filter_column_names):
     filter_value = filter_columns[idx].text_input(
         col_name,
         key=f"filter_{role}_{col_name}"
@@ -141,9 +156,10 @@ else:
     status_select_options = ["Sabine, check DE", "Ready to fill all languages"]
 
 edited_df = st.data_editor(
-    filtered_df,
+    filtered_df.set_index("_row_id"),
     use_container_width=True,
     num_rows="dynamic",
+    hide_index=True,
     disabled=disabled_columns,
     column_config={
         "status": st.column_config.SelectboxColumn(
@@ -155,14 +171,42 @@ edited_df = st.data_editor(
 )
 
 # ---- UPDATE DATA ----
-st.session_state.data.update(edited_df)
+edited_df = edited_df.reset_index()
+
+current_df = st.session_state.data.copy()
+current_df = current_df.set_index("_row_id")
+edited_df_indexed = edited_df.set_index("_row_id")
+
+# Update existing rows.
+common_ids = current_df.index.intersection(edited_df_indexed.index)
+current_df.update(edited_df_indexed.loc[common_ids])
+
+# Append newly added rows from editor.
+new_rows = edited_df_indexed.loc[~edited_df_indexed.index.isin(current_df.index)].copy()
+if not new_rows.empty:
+    new_rows = new_rows[~new_rows.index.to_series().isna()]
+    if not new_rows.empty:
+        new_rows = new_rows.reset_index(drop=True)
+        new_ids = range(
+            st.session_state.next_row_id,
+            st.session_state.next_row_id + len(new_rows)
+        )
+        new_rows.insert(0, "_row_id", list(new_ids))
+        st.session_state.next_row_id += len(new_rows)
+        new_rows = new_rows.set_index("_row_id")
+        current_df = pd.concat([current_df, new_rows], axis=0)
+
+st.session_state.data = current_df.reset_index()
 
 # ---- DOWNLOAD ----
 st.subheader("💾 Export")
 
 output = io.BytesIO()
 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-    st.session_state.data.to_excel(writer, index=False)
+    st.session_state.data.drop(columns=["_row_id"], errors="ignore").to_excel(
+        writer,
+        index=False
+    )
 output.seek(0)
 
 st.download_button(
