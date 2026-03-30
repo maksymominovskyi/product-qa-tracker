@@ -76,6 +76,7 @@ df = st.session_state.data.copy()
 
 # ---- FILTERING ----
 if role == "Me":
+    df_view = df
 elif role == "Katya":
     df_view = df[df["status"].isin(["Need fix", "Ready to fill all languages"])]
 else:
