@@ -221,8 +221,21 @@ if not new_rows.empty:
     current_df = pd.concat([current_df, new_rows], ignore_index=True)
 
 current_df["status"] = current_df["status"].fillna("").replace("", "New")
-st.session_state.data = current_df.reset_index(drop=True)
-save_persistent_data(st.session_state.data)
+current_df = current_df.reset_index(drop=True)
+
+has_changes = not current_df.equals(st.session_state.data.reset_index(drop=True))
+if has_changes:
+    st.session_state.data = current_df
+else:
+    st.session_state.data = st.session_state.data.reset_index(drop=True)
+
+save_clicked = st.button("💾 Save changes")
+if save_clicked:
+    save_persistent_data(st.session_state.data)
+    st.success("Changes saved.")
+elif has_changes:
+    # Safety net: auto-save so edits are not lost if user forgets to click Save.
+    save_persistent_data(st.session_state.data)
 
 # ---- DOWNLOAD ----
 st.subheader("💾 Export")
