@@ -102,3 +102,5 @@ st.download_button(
     "Download Excel",
     data=output,
     file_name="product_tracker.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
