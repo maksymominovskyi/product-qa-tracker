@@ -128,6 +128,7 @@ else:
             "Filled all languages",
         ])
     ]
+    df_view = df_view.drop(columns=["fix_comment"], errors="ignore")
 
 # ---- COLUMN FILTERS (dropdown near each column name) ----
 st.subheader("🔎 Filters")
@@ -161,9 +162,9 @@ if role == "Me":
     status_select_options = STATUS_OPTIONS
 elif role == "Katya":
     disabled_columns = ["fix_comment", "qa_comment"]
-    status_select_options = ["Fixed", "Filled all languages"]
+    status_select_options = ["New", "Fixed", "Filled all languages"]
 else:
-    disabled_columns = ["primary_id", "name_de", "fix_comment"]
+    disabled_columns = ["primary_id", "name_de"]
     status_select_options = ["Sabine, check DE", "Ready to fill all languages"]
 
 allow_row_delete = role in ["Me", "Katya"]
