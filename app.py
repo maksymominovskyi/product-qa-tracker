@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+from pathlib import Path
 
 STATUS_OPTIONS = [
     "New",
@@ -10,6 +11,25 @@ STATUS_OPTIONS = [
     "Ready to fill all languages",
     "Filled all languages",
 ]
+DATA_FILE = Path("product_tracker_data.xlsx")
+
+
+def load_persistent_data() -> pd.DataFrame:
+    if DATA_FILE.exists():
+        loaded_df = pd.read_excel(DATA_FILE)
+        expected_cols = ["primary_id", "name_de", "fix_comment", "qa_comment", "status"]
+        for col in expected_cols:
+            if col not in loaded_df.columns:
+                loaded_df[col] = ""
+        return loaded_df[expected_cols]
+    return pd.DataFrame(
+        columns=["primary_id", "name_de", "fix_comment", "qa_comment", "status"]
+    )
+
+
+def save_persistent_data(df: pd.DataFrame) -> None:
+    export_df = df[["primary_id", "name_de", "fix_comment", "qa_comment", "status"]].copy()
+    export_df.to_excel(DATA_FILE, index=False)
 
 st.set_page_config(page_title="Product QA Tracker", layout="wide")
 
@@ -17,18 +37,7 @@ st.title("🛠️ Product QA Tracker")
 
 # ---- INIT SESSION STATE ----
 if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=[
-        "_row_id", "primary_id", "name_de", "fix_comment", "qa_comment", "status"
-    ])
-if "next_row_id" not in st.session_state:
-    st.session_state.next_row_id = 1
-
-if "_row_id" not in st.session_state.data.columns:
-    st.session_state.data["_row_id"] = range(
-        st.session_state.next_row_id,
-        st.session_state.next_row_id + len(st.session_state.data)
-    )
-    st.session_state.next_row_id += len(st.session_state.data)
+    st.session_state.data = load_persistent_data()
 
 # ---- ROLE FROM URL ----
 ROLE_PARAM_TO_LABEL = {
@@ -60,46 +69,44 @@ if role in ["Me", "Katya"]:
     if st.button("➕ Add data"):
         if paste_input.strip() != "":
             rows = paste_input.strip().split("\n")
-
             new_data = []
 
             for row in rows:
                 parts = row.split("\t")
-
                 if len(parts) == 1:
                     new_data.append({
-                        "_row_id": st.session_state.next_row_id,
                         "primary_id": parts[0],
                         "name_de": "",
                         "fix_comment": "",
                         "qa_comment": "",
                         "status": "New"
                     })
-                    st.session_state.next_row_id += 1
                 else:
                     new_data.append({
-                        "_row_id": st.session_state.next_row_id,
                         "primary_id": parts[0],
                         "name_de": parts[1],
                         "fix_comment": "",
                         "qa_comment": "",
                         "status": "New"
                     })
-                    st.session_state.next_row_id += 1
 
             df_new = pd.DataFrame(new_data)
-
             st.session_state.data = pd.concat(
                 [st.session_state.data, df_new],
                 ignore_index=True
             )
-
+            save_persistent_data(st.session_state.data)
             st.success(f"Added {len(df_new)} rows")
 
-df = st.session_state.data.copy()
-df["status"] = df["status"].fillna("").replace("", "New")
+# Keep indexes stable and status normalized.
+st.session_state.data = st.session_state.data.reset_index(drop=True)
+st.session_state.data["status"] = (
+    st.session_state.data["status"].fillna("").replace("", "New")
+)
 
-# ---- FILTERING ----
+df = st.session_state.data.copy()
+
+# ---- FILTERING BY ROLE ----
 if role == "Me":
     df_view = df
 elif role == "Katya":
@@ -122,22 +129,20 @@ else:
         ])
     ]
 
-# ---- COLUMN FILTERS (Excel-like dropdowns) ----
+# ---- COLUMN FILTERS (dropdown near each column name) ----
 st.subheader("🔎 Filters")
 filtered_df = df_view.copy()
 
-filter_column_names = [c for c in filtered_df.columns if c != "_row_id"]
+filter_column_names = list(filtered_df.columns)
 filter_columns = st.columns(len(filter_column_names))
 selected_filters = {}
 
 for idx, col_name in enumerate(filter_column_names):
-    available_values = sorted(
-        df_view[col_name].dropna().astype(str).unique().tolist()
-    )
+    available_values = sorted(df_view[col_name].dropna().astype(str).unique().tolist())
     with filter_columns[idx]:
-        with st.popover(f"🔽 {col_name}"):
+        with st.popover(f"{col_name} ⏷"):
             selected_filters[col_name] = st.multiselect(
-                f"Values for {col_name}",
+                "Select values",
                 options=available_values,
                 key=f"filter_values_{role}_{col_name}"
             )
@@ -164,7 +169,7 @@ else:
 allow_row_delete = role in ["Me", "Katya"]
 
 edited_df = st.data_editor(
-    filtered_df.set_index("_row_id"),
+    filtered_df,
     use_container_width=True,
     num_rows="dynamic" if allow_row_delete else "fixed",
     hide_index=True,
@@ -179,52 +184,37 @@ edited_df = st.data_editor(
 )
 
 # ---- UPDATE DATA ----
-edited_df = edited_df.reset_index()
-
 current_df = st.session_state.data.copy()
-current_df = current_df.set_index("_row_id")
-edited_df_indexed = edited_df.set_index("_row_id")
-visible_ids_before_edit = set(filtered_df["_row_id"].tolist())
+visible_ids_before_edit = set(filtered_df.index.tolist())
+edited_existing = edited_df[edited_df.index.isin(current_df.index)]
 
-# Update existing rows.
-common_ids = current_df.index.intersection(edited_df_indexed.index)
-current_df.update(edited_df_indexed.loc[common_ids])
+# Update existing rows by index.
+current_df.update(edited_existing)
 
 # Apply deletions for roles that are allowed to delete rows.
 if allow_row_delete:
-    existing_ids_after_edit = set(common_ids.tolist())
+    existing_ids_after_edit = set(edited_existing.index.tolist())
     deleted_ids = visible_ids_before_edit - existing_ids_after_edit
     if deleted_ids:
         current_df = current_df.drop(index=list(deleted_ids), errors="ignore")
 
 # Append newly added rows from editor.
-new_rows = edited_df_indexed.loc[~edited_df_indexed.index.isin(current_df.index)].copy()
+new_rows = edited_df[~edited_df.index.isin(current_df.index)].copy()
 if not new_rows.empty:
-    new_rows = new_rows[~new_rows.index.to_series().isna()]
-    if not new_rows.empty:
-        new_rows = new_rows.reset_index(drop=True)
-        new_ids = range(
-            st.session_state.next_row_id,
-            st.session_state.next_row_id + len(new_rows)
-        )
-        new_rows.insert(0, "_row_id", list(new_ids))
-        new_rows["status"] = new_rows["status"].fillna("").replace("", "New")
-        st.session_state.next_row_id += len(new_rows)
-        new_rows = new_rows.set_index("_row_id")
-        current_df = pd.concat([current_df, new_rows], axis=0)
+    new_rows = new_rows.reset_index(drop=True)
+    new_rows["status"] = new_rows["status"].fillna("").replace("", "New")
+    current_df = pd.concat([current_df, new_rows], ignore_index=True)
 
 current_df["status"] = current_df["status"].fillna("").replace("", "New")
-st.session_state.data = current_df.reset_index()
+st.session_state.data = current_df.reset_index(drop=True)
+save_persistent_data(st.session_state.data)
 
 # ---- DOWNLOAD ----
 st.subheader("💾 Export")
 
 output = io.BytesIO()
 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-    st.session_state.data.drop(columns=["_row_id"], errors="ignore").to_excel(
-        writer,
-        index=False
-    )
+    st.session_state.data.to_excel(writer, index=False)
 output.seek(0)
 
 st.download_button(
