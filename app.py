@@ -176,6 +176,8 @@ edited_df = st.data_editor(
     hide_index=True,
     disabled=disabled_columns,
     column_config={
+        "fix_comment": st.column_config.TextColumn("fix_comment"),
+        "qa_comment": st.column_config.TextColumn("qa_comment"),
         "status": st.column_config.SelectboxColumn(
             "status",
             options=status_select_options,
