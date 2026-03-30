@@ -122,24 +122,30 @@ else:
         ])
     ]
 
-# ---- COLUMN FILTERS ----
+# ---- COLUMN FILTERS (Excel-like dropdowns) ----
 st.subheader("🔎 Filters")
 filtered_df = df_view.copy()
 
 filter_column_names = [c for c in filtered_df.columns if c != "_row_id"]
 filter_columns = st.columns(len(filter_column_names))
+selected_filters = {}
+
 for idx, col_name in enumerate(filter_column_names):
-    filter_value = filter_columns[idx].text_input(
-        col_name,
-        key=f"filter_{role}_{col_name}"
-    ).strip()
-    if filter_value:
-        filtered_df = filtered_df[
-            filtered_df[col_name].astype(str).str.contains(
-                filter_value,
-                case=False,
-                na=False
+    available_values = sorted(
+        df_view[col_name].dropna().astype(str).unique().tolist()
+    )
+    with filter_columns[idx]:
+        with st.popover(f"🔽 {col_name}"):
+            selected_filters[col_name] = st.multiselect(
+                f"Values for {col_name}",
+                options=available_values,
+                key=f"filter_values_{role}_{col_name}"
             )
+
+for col_name, selected_values in selected_filters.items():
+    if selected_values:
+        filtered_df = filtered_df[
+            filtered_df[col_name].astype(str).isin(selected_values)
         ]
 
 st.write(f"Showing {len(filtered_df)} records")
@@ -155,10 +161,12 @@ else:
     disabled_columns = ["primary_id", "name_de", "fix_comment"]
     status_select_options = ["Sabine, check DE", "Ready to fill all languages"]
 
+allow_row_delete = role in ["Me", "Katya"]
+
 edited_df = st.data_editor(
     filtered_df.set_index("_row_id"),
     use_container_width=True,
-    num_rows="dynamic",
+    num_rows="dynamic" if allow_row_delete else "fixed",
     hide_index=True,
     disabled=disabled_columns,
     column_config={
@@ -176,10 +184,18 @@ edited_df = edited_df.reset_index()
 current_df = st.session_state.data.copy()
 current_df = current_df.set_index("_row_id")
 edited_df_indexed = edited_df.set_index("_row_id")
+visible_ids_before_edit = set(filtered_df["_row_id"].tolist())
 
 # Update existing rows.
 common_ids = current_df.index.intersection(edited_df_indexed.index)
 current_df.update(edited_df_indexed.loc[common_ids])
+
+# Apply deletions for roles that are allowed to delete rows.
+if allow_row_delete:
+    existing_ids_after_edit = set(common_ids.tolist())
+    deleted_ids = visible_ids_before_edit - existing_ids_after_edit
+    if deleted_ids:
+        current_df = current_df.drop(index=list(deleted_ids), errors="ignore")
 
 # Append newly added rows from editor.
 new_rows = edited_df_indexed.loc[~edited_df_indexed.index.isin(current_df.index)].copy()
@@ -192,10 +208,12 @@ if not new_rows.empty:
             st.session_state.next_row_id + len(new_rows)
         )
         new_rows.insert(0, "_row_id", list(new_ids))
+        new_rows["status"] = new_rows["status"].fillna("").replace("", "New")
         st.session_state.next_row_id += len(new_rows)
         new_rows = new_rows.set_index("_row_id")
         current_df = pd.concat([current_df, new_rows], axis=0)
 
+current_df["status"] = current_df["status"].fillna("").replace("", "New")
 st.session_state.data = current_df.reset_index()
 
 # ---- DOWNLOAD ----
