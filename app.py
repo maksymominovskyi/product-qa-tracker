@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from pathlib import Path
+import sqlite3
 
 STATUS_OPTIONS = [
     "New",
@@ -11,29 +12,57 @@ STATUS_OPTIONS = [
     "Ready to fill all languages",
     "Filled all languages",
 ]
-DATA_FILE = Path("product_tracker_data.xlsx")
+DB_FILE = Path("product_tracker_data.db")
+TABLE_NAME = "tracker_rows"
 
 
 def load_persistent_data() -> pd.DataFrame:
-    if DATA_FILE.exists():
-        loaded_df = pd.read_excel(DATA_FILE)
-        expected_cols = ["primary_id", "name_de", "fix_comment", "qa_comment", "status"]
-        for col in expected_cols:
-            if col not in loaded_df.columns:
-                loaded_df[col] = ""
-        return loaded_df[expected_cols]
-    return pd.DataFrame(
-        columns=["primary_id", "name_de", "fix_comment", "qa_comment", "status"]
-    )
+    expected_cols = ["primary_id", "name_de", "fix_comment", "qa_comment", "status"]
+    if not DB_FILE.exists():
+        return pd.DataFrame(columns=expected_cols)
+
+    with sqlite3.connect(DB_FILE) as conn:
+        loaded_df = pd.read_sql_query(
+            f"SELECT primary_id, name_de, fix_comment, qa_comment, status FROM {TABLE_NAME} ORDER BY id",
+            conn
+        )
+
+    for col in expected_cols:
+        if col not in loaded_df.columns:
+            loaded_df[col] = ""
+    return loaded_df[expected_cols]
 
 
 def save_persistent_data(df: pd.DataFrame) -> None:
     export_df = df[["primary_id", "name_de", "fix_comment", "qa_comment", "status"]].copy()
-    export_df.to_excel(DATA_FILE, index=False)
+    export_df = export_df.fillna("")
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(f"DELETE FROM {TABLE_NAME}")
+        conn.commit()
+        export_df.to_sql(TABLE_NAME, conn, if_exists="append", index=False)
+
+
+def init_db() -> None:
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                primary_id TEXT,
+                name_de TEXT,
+                fix_comment TEXT,
+                qa_comment TEXT,
+                status TEXT
+            )
+            """
+        )
+        conn.commit()
 
 
 st.set_page_config(page_title="Product QA Tracker", layout="wide")
+
 st.title("🛠️ Product QA Tracker")
+init_db()
 
 # ---- INIT SESSION STATE ----
 if "data" not in st.session_state:
