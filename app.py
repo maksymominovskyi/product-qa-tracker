@@ -212,6 +212,7 @@ allow_row_delete = role in ["Me", "Katya"]
 
 edited_df = st.data_editor(
     filtered_df,
+    key="qa_editor_table",
     use_container_width=True,
     num_rows="dynamic" if allow_row_delete else "fixed",
     hide_index=True,
@@ -227,44 +228,36 @@ edited_df = st.data_editor(
     },
 )
 
-# ---- UPDATE DATA ----
-current_df = st.session_state.data.copy()
-visible_ids_before_edit = set(filtered_df.index.tolist())
-edited_existing = edited_df[edited_df.index.isin(current_df.index)]
-
-# Update existing rows by index.
-current_df.update(edited_existing)
-
-# Apply deletions for roles that are allowed to delete rows.
-if allow_row_delete:
-    existing_ids_after_edit = set(edited_existing.index.tolist())
-    deleted_ids = visible_ids_before_edit - existing_ids_after_edit
-    if deleted_ids:
-        current_df = current_df.drop(index=list(deleted_ids), errors="ignore")
-
-# Append newly added rows from editor.
-new_rows = edited_df[~edited_df.index.isin(current_df.index)].copy()
-if not new_rows.empty:
-    new_rows = new_rows.reset_index(drop=True)
-    new_rows["status"] = new_rows["status"].fillna("").replace("", "New")
-    current_df = pd.concat([current_df, new_rows], ignore_index=True)
-
-current_df["status"] = current_df["status"].fillna("").replace("", "New")
-current_df = current_df.reset_index(drop=True)
-
-has_changes = not current_df.equals(st.session_state.data.reset_index(drop=True))
-if has_changes:
-    st.session_state.data = current_df
-else:
-    st.session_state.data = st.session_state.data.reset_index(drop=True)
-
 save_clicked = st.button("💾 Save changes")
 if save_clicked:
+    # ---- UPDATE DATA ----
+    current_df = st.session_state.data.copy()
+    visible_ids_before_edit = set(filtered_df.index.tolist())
+    edited_existing = edited_df[edited_df.index.isin(current_df.index)]
+
+    # Update existing rows by index.
+    current_df.update(edited_existing)
+
+    # Apply deletions for roles that are allowed to delete rows.
+    if allow_row_delete:
+        existing_ids_after_edit = set(edited_existing.index.tolist())
+        deleted_ids = visible_ids_before_edit - existing_ids_after_edit
+        if deleted_ids:
+            current_df = current_df.drop(index=list(deleted_ids), errors="ignore")
+
+    # Append newly added rows from editor.
+    new_rows = edited_df[~edited_df.index.isin(current_df.index)].copy()
+    if not new_rows.empty:
+        new_rows = new_rows.reset_index(drop=True)
+        new_rows["status"] = new_rows["status"].fillna("").replace("", "New")
+        current_df = pd.concat([current_df, new_rows], ignore_index=True)
+
+    current_df["status"] = current_df["status"].fillna("").replace("", "New")
+    current_df = current_df.reset_index(drop=True)
+    st.session_state.data = current_df
+
     save_persistent_data(st.session_state.data)
     st.success("Changes saved.")
-elif has_changes:
-    # Safety net: auto-save so edits are not lost if user forgets to click Save.
-    save_persistent_data(st.session_state.data)
 
 # ---- DOWNLOAD ----
 st.subheader("💾 Export")
